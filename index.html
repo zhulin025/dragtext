@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>老 A 的 AI Lab</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.82), transparent 26%),
+        linear-gradient(135deg, #f4efe6 0%, #e9e1d4 48%, #dfe7df 100%);
+      color: #27231f;
+      font-family: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
+      touch-action: none;
+    }
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: clamp(38px, 8vh, 86px) 18px 28px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #text-string {
+      position: relative;
+      width: min(760px, 100%);
+      height: 100%;
+      min-height: 420px;
+    }
+
+    #thread {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .letter {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: inline-block;
+      white-space: pre;
+      color: rgba(39, 35, 31, 0.9);
+      font-size: clamp(17px, 2vw, 21px);
+      line-height: 1;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .letter.free {
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 3;
+      color: #1c2a2a;
+    }
+
+    .letter.dragging {
+      cursor: grabbing;
+    }
+
+    .letter.end::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(28, 42, 42, 0.38);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: pulse 1.4s ease-out infinite;
+      pointer-events: none;
+    }
+
+    .toolbar {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      border: 1px solid rgba(39, 35, 31, 0.18);
+      border-radius: 8px;
+      background: rgba(255, 253, 248, 0.72);
+      color: #2d302b;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 26px rgba(39, 35, 31, 0.08);
+    }
+
+    .icon-button:hover {
+      background: rgba(255, 253, 248, 0.9);
+    }
+
+    .icon-button svg {
+      width: 19px;
+      height: 19px;
+      stroke-width: 2;
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 0.78;
+        transform: translate(-50%, -50%) scale(0.68);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.65);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .stage {
+        padding: 28px 12px 72px;
+      }
+
+      #text-string {
+        width: 100%;
+      }
+
+      .letter {
+        font-size: 16px;
+      }
+
+      .toolbar {
+        right: 12px;
+        bottom: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="stage">
+    <section id="text-string" aria-label="当前大模型与 AGI 的进程">
+      <canvas id="thread"></canvas>
+    </section>
+  </main>
+
+  <div class="toolbar" aria-label="controls">
+    <button class="icon-button" id="gravity" type="button" aria-label="toggle gravity" title="toggle gravity">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="M12 3v16"></path>
+        <path d="m6 13 6 6 6-6"></path>
+      </svg>
+    </button>
+    <button class="icon-button" id="reset" type="button" aria-label="reset" title="reset">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+        <path d="M3 4v6h6"></path>
+      </svg>
+    </button>
+  </div>
+
+  <script>
+    const ARTICLE = "当前大模型与 AGI 的进程，已经从单点能力竞赛进入系统工程阶段。过去两年，模型在语言、代码、图像、语音和视频上的表现快速逼近专业水平，真正的变化不只是参数规模变大，而是推理、工具调用、长上下文、记忆和多模态协作逐渐被接到同一个工作流里。今天的先进模型已经能写程序、读论文、分析表格、控制软件，也能在复杂任务中拆解步骤并反复修正。它们还不是可靠的通用智能：会幻觉，缺少稳定的世界模型，长期目标管理脆弱，对新环境的因果理解也有限。但 AGI 的路线正在变清晰，前沿实验室不再只训练一个会聊天的模型，而是在训练能观察、计划、行动、验证的智能体。未来几年，瓶颈可能来自数据质量、算力成本、评测标准和安全治理。若模型能在真实任务中持续学习，稳定调用外部工具，并把错误率压到工程可接受范围，AGI 会先以高效同事的形式出现：它不一定拥有人的意识，却能承担研究、开发、运营和决策支持中的大量认知劳动。因此，当前进程最准确的描述不是已经抵达 AGI，也不是遥不可及，而是正在从演示能力走向可托付能力。| LaoA";
+
+    const container = document.getElementById("text-string");
+    const canvas = document.getElementById("thread");
+    const ctx = canvas.getContext("2d");
+    const gravityButton = document.getElementById("gravity");
+    const resetButton = document.getElementById("reset");
+    const segmenter = "Segmenter" in Intl
+      ? new Intl.Segmenter("zh-CN", { granularity: "grapheme" })
+      : null;
+
+    const FONT_FAMILY = 'Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif';
+    const MARGIN = 22;
+    const LINE_HEIGHT = window.innerWidth <= 640 ? 27 : 31;
+    const DAMPING = 0.965;
+    const GRAVITY = 0.16;
+    const ITERATIONS = 13;
+    const UNLOCK_THRESHOLD = 1.6;
+    const COLLISION_RADIUS = 7.8;
+    const REST_SCALE = 1.04;
+
+    let graphemes = [];
+    let widths = [];
+    let positions = [];
+    let order = [];
+    let letters = [];
+    let nodes = [];
+    let restLengths = [];
+    let drags = new Map();
+    let gravityOn = true;
+    let releasing = false;
+    let releaseIdx = -1;
+    let lastTime = 0;
+
+    function splitGraphemes(text) {
+      if (segmenter) return [...segmenter.segment(text)].map((item) => item.segment);
+      return Array.from(text);
+    }
+
+    function fontSize() {
+      if (window.innerWidth <= 640) return 16;
+      return Math.max(17, Math.min(21, window.innerWidth * 0.02));
+    }
+
+    function measure() {
+      const size = fontSize();
+      ctx.font = `${size}px ${FONT_FAMILY}`;
+      graphemes = splitGraphemes(ARTICLE);
+      widths = graphemes.map((ch) => {
+        if (ch === "\n") return 0;
+        return Math.max(ctx.measureText(ch).width, size * 0.42);
+      });
+    }
+
+    function layout() {
+      const maxWidth = Math.max(260, container.clientWidth - MARGIN * 2);
+      const raw = [];
+      const lines = [];
+      let x = 0;
+      let line = [];
+      let y = 0;
+
+      for (let i = 0; i < graphemes.length; i++) {
+        const ch = graphemes[i];
+        const w = widths[i];
+        const isBreak = ch === "\n";
+        if ((x + w > maxWidth && x > 0) || isBreak) {
+          lines.push(line);
+          line = [];
+          x = 0;
+          y += LINE_HEIGHT;
+        }
+        if (isBreak) continue;
+        raw[i] = { x: x + MARGIN, y, w };
+        line.push(i);
+        x += w;
+      }
+      if (line.length) lines.push(line);
+
+      const totalHeight = Math.max(LINE_HEIGHT, lines.length * LINE_HEIGHT);
+      const topOffset = Math.max(0, (container.clientHeight - totalHeight) * 0.26);
+      positions = raw.map((item) => item ? { ...item, y: item.y + topOffset } : item);
+
+      const flip = lines.length % 2 === 0;
+      order = [];
+      for (let i = 0; i < lines.length; i++) {
+        const current = flip ? i % 2 === 0 : i % 2 === 1;
+        order.push(...(current ? [...lines[i]].reverse() : lines[i]));
+      }
+    }
+
+    function build() {
+      container.querySelectorAll(".letter").forEach((node) => node.remove());
+      nodes = [];
+      letters = order.map((readingIdx) => {
+        const p = positions[readingIdx];
+        return {
+          ch: graphemes[readingIdx],
+          w: p.w,
+          x: p.x,
+          y: p.y,
+          ox: p.x,
+          oy: p.y,
+          px: p.x,
+          py: p.y,
+          readingIdx,
+          locked: true
+        };
+      });
+
+      restLengths = [];
+      for (let i = 0; i < letters.length - 1; i++) {
+        const a = letters[i];
+        const b = letters[i + 1];
+        restLengths.push(Math.hypot(centerX(b) - centerX(a), centerY(b) - centerY(a)) * REST_SCALE);
+      }
+
+      for (const letter of letters) {
+        const span = document.createElement("span");
+        span.className = "letter";
+        span.textContent = letter.ch;
+        container.appendChild(span);
+        nodes.push(span);
+      }
+      unlockTail();
+      renderLetters();
+    }
+
+    function unlockTail() {
+      const last = letters.length - 1;
+      for (let i = last; i > Math.max(-1, last - 7); i--) {
+        letters[i].locked = false;
+        nodes[i].classList.add("free");
+      }
+      nodes[last]?.classList.add("end");
+    }
+
+    function resetScene() {
+      drags.clear();
+      releasing = false;
+      releaseIdx = -1;
+      measure();
+      layout();
+      build();
+    }
+
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(container.clientWidth * ratio);
+      canvas.height = Math.floor(container.clientHeight * ratio);
+      canvas.style.width = `${container.clientWidth}px`;
+      canvas.style.height = `${container.clientHeight}px`;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+
+    function relayout() {
+      const freeState = new Map(letters.map((letter) => [letter.readingIdx, {
+        x: letter.x,
+        y: letter.y,
+        px: letter.px,
+        py: letter.py,
+        locked: letter.locked
+      }]));
+      measure();
+      layout();
+      resizeCanvas();
+      for (let i = 0; i < letters.length; i++) {
+        const letter = letters[i];
+        const p = positions[letter.readingIdx];
+        const old = freeState.get(letter.readingIdx);
+        letter.w = p.w;
+        letter.ox = p.x;
+        letter.oy = p.y;
+        if (old && !old.locked) {
+          letter.x = old.x;
+          letter.y = old.y;
+          letter.px = old.px;
+          letter.py = old.py;
+          letter.locked = false;
+        } else {
+          letter.x = p.x;
+          letter.y = p.y;
+          letter.px = p.x;
+          letter.py = p.y;
+          letter.locked = true;
+        }
+      }
+      restLengths = [];
+      for (let i = 0; i < letters.length - 1; i++) {
+        const a = letters[i];
+        const b = letters[i + 1];
+        restLengths.push(Math.hypot(centerX(b) - centerX(a), centerY(b) - centerY(a)) * REST_SCALE);
+      }
+      nodes.forEach((node, i) => node.classList.toggle("free", !letters[i].locked));
+      nodes[nodes.length - 1]?.classList.add("end");
+    }
+
+    function centerX(letter) {
+      return letter.x + letter.w / 2;
+    }
+
+    function centerY(letter) {
+      return letter.y + LINE_HEIGHT / 2;
+    }
+
+    function isDragged(idx) {
+      for (const drag of drags.values()) {
+        if (drag.idx === idx) return true;
+      }
+      return false;
+    }
+
+    function nearestFreeLetter(clientX, clientY) {
+      const rect = container.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      let best = -1;
+      let bestDist = 28;
+
+      for (let i = 0; i < letters.length; i++) {
+        if (letters[i].locked || isDragged(i)) continue;
+        const dx = centerX(letters[i]) - x;
+        const dy = centerY(letters[i]) - y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < bestDist) {
+          best = i;
+          bestDist = dist;
+        }
+      }
+
+      return best;
+    }
+
+    function releaseOne() {
+      if (!releasing) return;
+      while (releaseIdx >= 0 && !letters[releaseIdx].locked) releaseIdx--;
+      if (releaseIdx < 0) {
+        releasing = false;
+        return;
+      }
+      const letter = letters[releaseIdx];
+      letter.locked = false;
+      letter.px = letter.x;
+      letter.py = letter.y - 1;
+      nodes[releaseIdx].classList.add("free");
+      releaseIdx--;
+    }
+
+    function simulate() {
+      releaseOne();
+
+      for (let i = letters.length - 2; i >= 0; i--) {
+        if (!letters[i].locked || letters[i + 1].locked) continue;
+        const a = letters[i];
+        const b = letters[i + 1];
+        const dx = centerX(b) - (a.ox + a.w / 2);
+        const dy = centerY(b) - (a.oy + LINE_HEIGHT / 2);
+        if (Math.hypot(dx, dy) > restLengths[i] + UNLOCK_THRESHOLD) {
+          a.locked = false;
+          a.px = a.x;
+          a.py = a.y;
+          nodes[i].classList.add("free");
+          nodes[nodes.length - 1]?.classList.remove("end");
+        }
+      }
+
+      for (let i = 0; i < letters.length; i++) {
+        const letter = letters[i];
+        if (letter.locked || isDragged(i)) continue;
+        const vx = (letter.x - letter.px) * DAMPING;
+        const vy = (letter.y - letter.py) * DAMPING;
+        letter.px = letter.x;
+        letter.py = letter.y;
+        letter.x += vx;
+        letter.y += vy + (gravityOn ? GRAVITY : 0);
+      }
+
+      for (let iter = 0; iter < ITERATIONS; iter++) {
+        for (let i = 0; i < letters.length - 1; i++) {
+          const a = letters[i];
+          const b = letters[i + 1];
+          if (a.locked && b.locked) continue;
+
+          const dx = centerX(b) - centerX(a);
+          const dy = centerY(b) - centerY(a);
+          const dist = Math.hypot(dx, dy) || 0.001;
+          const diff = (dist - restLengths[i]) / dist;
+          const aFixed = a.locked || isDragged(i);
+          const bFixed = b.locked || isDragged(i + 1);
+
+          if (aFixed && !bFixed) {
+            b.x -= dx * diff;
+            b.y -= dy * diff;
+          } else if (!aFixed && bFixed) {
+            a.x += dx * diff;
+            a.y += dy * diff;
+          } else if (!aFixed && !bFixed) {
+            a.x += dx * diff * 0.5;
+            a.y += dy * diff * 0.5;
+            b.x -= dx * diff * 0.5;
+            b.y -= dy * diff * 0.5;
+          }
+        }
+      }
+
+      for (let i = 0; i < letters.length; i++) {
+        if (letters[i].locked) continue;
+        const a = letters[i];
+        const ax = centerX(a);
+        const ay = centerY(a);
+        for (let j = i + 2; j < letters.length; j++) {
+          if (letters[j].locked) continue;
+          const b = letters[j];
+          const dx = centerX(b) - ax;
+          const dy = centerY(b) - ay;
+          const dist = Math.hypot(dx, dy) || 0.001;
+          const min = COLLISION_RADIUS * 2;
+          if (dist >= min) continue;
+          const push = ((min - dist) / dist) * 0.5;
+          if (!isDragged(i)) {
+            a.x -= dx * push;
+            a.y -= dy * push;
+          }
+          if (!isDragged(j)) {
+            b.x += dx * push;
+            b.y += dy * push;
+          }
+        }
+      }
+
+      const minX = -container.getBoundingClientRect().left;
+      const minY = -container.getBoundingClientRect().top;
+      const maxX = window.innerWidth - container.getBoundingClientRect().left;
+      const bottomSafeArea = window.innerWidth <= 640 ? 82 : 0;
+      const maxY = window.innerHeight - container.getBoundingClientRect().top - bottomSafeArea;
+      for (let i = 0; i < letters.length; i++) {
+        const letter = letters[i];
+        if (letter.locked || isDragged(i)) continue;
+        if (letter.x < minX) {
+          letter.x = minX;
+          letter.px = letter.x + (letter.x - letter.px) * 0.4;
+        }
+        if (letter.x + letter.w > maxX) {
+          letter.x = maxX - letter.w;
+          letter.px = letter.x + (letter.x - letter.px) * 0.4;
+        }
+        if (letter.y < minY) {
+          letter.y = minY;
+          letter.py = letter.y + (letter.y - letter.py) * 0.4;
+        }
+        if (letter.y + LINE_HEIGHT > maxY) {
+          letter.y = maxY - LINE_HEIGHT;
+          letter.py = letter.y + (letter.y - letter.py) * 0.4;
+        }
+      }
+    }
+
+    function drawThread() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (letters.length < 2) return;
+      ctx.save();
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = "rgba(56, 53, 46, 0.18)";
+      ctx.beginPath();
+      ctx.moveTo(centerX(letters[0]), centerY(letters[0]));
+      for (let i = 1; i < letters.length; i++) {
+        ctx.lineTo(centerX(letters[i]), centerY(letters[i]));
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function renderLetters() {
+      drawThread();
+      for (let i = 0; i < letters.length; i++) {
+        const letter = letters[i];
+        nodes[i].style.transform = `translate3d(${letter.x}px, ${letter.y}px, 0)`;
+      }
+    }
+
+    function animate(now) {
+      if (!lastTime) lastTime = now;
+      const elapsed = Math.min(48, now - lastTime);
+      lastTime = now;
+      const steps = Math.max(1, Math.round(elapsed / 8));
+      for (let i = 0; i < steps; i++) simulate();
+      renderLetters();
+      requestAnimationFrame(animate);
+    }
+
+    function startDrag(id, clientX, clientY, target) {
+      const directIdx = nodes.indexOf(target);
+      const idx = directIdx !== -1 ? directIdx : nearestFreeLetter(clientX, clientY);
+      if (idx === -1 || letters[idx].locked || isDragged(idx)) return false;
+      const rect = container.getBoundingClientRect();
+      drags.set(id, {
+        idx,
+        offsetX: clientX - rect.left - letters[idx].x,
+        offsetY: clientY - rect.top - letters[idx].y
+      });
+      if (target.setPointerCapture && typeof id === "number") target.setPointerCapture(id);
+      nodes[idx].classList.add("dragging");
+      nodes[nodes.length - 1]?.classList.remove("end");
+      return true;
+    }
+
+    function moveDrag(id, clientX, clientY) {
+      const drag = drags.get(id);
+      if (!drag) return false;
+      const rect = container.getBoundingClientRect();
+      const letter = letters[drag.idx];
+      letter.x = clientX - rect.left - drag.offsetX;
+      letter.y = clientY - rect.top - drag.offsetY;
+      letter.px = letter.x;
+      letter.py = letter.y;
+      return true;
+    }
+
+    function endDrag(id) {
+      const drag = drags.get(id);
+      if (!drag) return false;
+      nodes[drag.idx].classList.remove("dragging");
+      drags.delete(id);
+      return true;
+    }
+
+    container.addEventListener("pointerdown", (event) => {
+      if (!startDrag(event.pointerId, event.clientX, event.clientY, event.target)) return;
+      event.preventDefault();
+    });
+
+    window.addEventListener("pointermove", (event) => {
+      if (moveDrag(event.pointerId, event.clientX, event.clientY)) event.preventDefault();
+    });
+
+    for (const eventName of ["pointerup", "pointercancel"]) {
+      window.addEventListener(eventName, (event) => {
+        endDrag(event.pointerId);
+      });
+    }
+
+    container.addEventListener("mousedown", (event) => {
+      if (startDrag("mouse", event.clientX, event.clientY, event.target)) event.preventDefault();
+    });
+
+    window.addEventListener("mousemove", (event) => {
+      if (moveDrag("mouse", event.clientX, event.clientY)) event.preventDefault();
+    });
+
+    window.addEventListener("mouseup", () => {
+      endDrag("mouse");
+    });
+
+    container.addEventListener("touchstart", (event) => {
+      for (const touch of event.changedTouches) {
+        if (startDrag(`touch-${touch.identifier}`, touch.clientX, touch.clientY, event.target)) {
+          event.preventDefault();
+        }
+      }
+    }, { passive: false });
+
+    window.addEventListener("touchmove", (event) => {
+      for (const touch of event.changedTouches) {
+        if (moveDrag(`touch-${touch.identifier}`, touch.clientX, touch.clientY)) {
+          event.preventDefault();
+        }
+      }
+    }, { passive: false });
+
+    window.addEventListener("touchend", (event) => {
+      for (const touch of event.changedTouches) endDrag(`touch-${touch.identifier}`);
+    });
+
+    window.addEventListener("touchcancel", (event) => {
+      for (const touch of event.changedTouches) endDrag(`touch-${touch.identifier}`);
+    });
+
+    gravityButton.addEventListener("click", () => {
+      gravityOn = !gravityOn;
+      if (gravityOn) {
+        releasing = true;
+        releaseIdx = letters.length - 1;
+      }
+      gravityButton.style.opacity = gravityOn ? "1" : "0.55";
+    });
+
+    resetButton.addEventListener("click", resetScene);
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key.toLowerCase() === "r") resetScene();
+      if (event.key.toLowerCase() === "f") {
+        gravityOn = !gravityOn;
+        if (gravityOn) {
+          releasing = true;
+          releaseIdx = letters.length - 1;
+        }
+        gravityButton.style.opacity = gravityOn ? "1" : "0.55";
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      window.clearTimeout(window.__resizeTimer);
+      window.__resizeTimer = window.setTimeout(relayout, 80);
+    });
+
+    resizeCanvas();
+    resetScene();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+
+</html>
